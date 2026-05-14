@@ -123,13 +123,19 @@ function isPiLocalOnlyPath(path: string, conn: SshConnection): boolean {
   return false;
 }
 
-function resolveToolPath(path: string, localCwd: string): string {
+function resolveToolPath(path: string, localCwd: string, localHome: string): string {
+  if (path === "~") {
+    return localHome;
+  }
+  if (path.startsWith("~/")) {
+    return resolve(localHome, path.slice(2));
+  }
   return resolve(localCwd, path);
 }
 
 function shouldUseLocalTool(path: string | undefined, localCwd: string, conn: SshConnection): boolean {
   if (!path) return false;
-  const absolutePath = resolveToolPath(path, localCwd);
+  const absolutePath = resolveToolPath(path, localCwd, conn.localHome);
   return isPiLocalOnlyPath(absolutePath, conn);
 }
 
