@@ -877,6 +877,12 @@ export default function piSshExtension(pi: ExtensionAPI): void {
   const localCwd = process.cwd();
   const localHome = homedir();
   const debug = process.env.PI_SSH_DEBUG === "1";
+  const debugLog = (message: string) => {
+    if (!debug) return;
+    const line = `[pi-ssh] ${message}`;
+    console.log(line);
+    void fs.appendFile("/tmp/pi-ssh-debug.log", `${line}\n`).catch(() => undefined);
+  };
 
   const localRead = createReadTool(localCwd);
   const localWrite = createWriteTool(localCwd);
@@ -897,8 +903,8 @@ export default function piSshExtension(pi: ExtensionAPI): void {
 
       if (debug) {
         const resolved = conn && requestedPath ? resolveToolPath(requestedPath, localCwd, conn.localHome) : undefined;
-        console.error(
-          `[pi-ssh] read path=${requestedPath ?? "<none>"} resolved=${resolved ?? "<none>"} localOnly=${String(localOnly)} transport=${String(Boolean(transport))}`,
+        debugLog(
+          `read path=${requestedPath ?? "<none>"} resolved=${resolved ?? "<none>"} localOnly=${String(localOnly)} transport=${String(Boolean(transport))}`,
         );
       }
 
