@@ -1,5 +1,6 @@
 import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
 import { homedir } from "node:os";
+import { resolve } from "node:path";
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 import {
   createBashTool,
@@ -120,6 +121,16 @@ function isPiLocalOnlyPath(path: string, conn: SshConnection): boolean {
   }
 
   return false;
+}
+
+function resolveToolPath(path: string, localCwd: string): string {
+  return resolve(localCwd, path);
+}
+
+function shouldUseLocalTool(path: string | undefined, localCwd: string, conn: SshConnection): boolean {
+  if (!path) return false;
+  const absolutePath = resolveToolPath(path, localCwd);
+  return isPiLocalOnlyPath(absolutePath, conn);
 }
 
 function mapLocalPathToRemote(path: string, conn: SshConnection): string {
@@ -851,12 +862,12 @@ export default function piSshExtension(pi: ExtensionAPI): void {
     ...localRead,
     async execute(id, params, signal, onUpdate) {
       const conn = getConnection();
-      if (!conn) {
+      const requestedPath = typeof (params as { path?: unknown })?.path === "string" ? (params as { path?: string }).path : undefined;
+
+      if (!conn || !transport || shouldUseLocalTool(requestedPath, localCwd, conn)) {
         return localRead.execute(id, params, signal, onUpdate);
       }
-      if (!transport) {
-        return localRead.execute(id, params, signal, onUpdate);
-      }
+
       const tool = createReadTool(localCwd, { operations: createRemoteReadOps(conn, transport) });
       return tool.execute(id, params, signal, onUpdate);
     },
@@ -866,12 +877,12 @@ export default function piSshExtension(pi: ExtensionAPI): void {
     ...localWrite,
     async execute(id, params, signal, onUpdate) {
       const conn = getConnection();
-      if (!conn) {
+      const requestedPath = typeof (params as { path?: unknown })?.path === "string" ? (params as { path?: string }).path : undefined;
+
+      if (!conn || !transport || shouldUseLocalTool(requestedPath, localCwd, conn)) {
         return localWrite.execute(id, params, signal, onUpdate);
       }
-      if (!transport) {
-        return localWrite.execute(id, params, signal, onUpdate);
-      }
+
       const tool = createWriteTool(localCwd, { operations: createRemoteWriteOps(conn, transport) });
       return tool.execute(id, params, signal, onUpdate);
     },
@@ -881,12 +892,12 @@ export default function piSshExtension(pi: ExtensionAPI): void {
     ...localEdit,
     async execute(id, params, signal, onUpdate) {
       const conn = getConnection();
-      if (!conn) {
+      const requestedPath = typeof (params as { path?: unknown })?.path === "string" ? (params as { path?: string }).path : undefined;
+
+      if (!conn || !transport || shouldUseLocalTool(requestedPath, localCwd, conn)) {
         return localEdit.execute(id, params, signal, onUpdate);
       }
-      if (!transport) {
-        return localEdit.execute(id, params, signal, onUpdate);
-      }
+
       const tool = createEditTool(localCwd, { operations: createRemoteEditOps(conn, transport) });
       return tool.execute(id, params, signal, onUpdate);
     },
