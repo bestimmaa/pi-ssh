@@ -106,11 +106,32 @@ class CommandQueue {
   }
 }
 
+function isPiLocalOnlyPath(path: string, conn: SshConnection): boolean {
+  const localPiDir = `${conn.localHome}/.pi`;
+
+  if (path === localPiDir || path.startsWith(`${localPiDir}/`)) {
+    return true;
+  }
+
+  // Keep pi internals local (docs, SDK, built-in skills/extensions) even
+  // when they live under local $HOME (for example in ~/.asdf installs).
+  if (path.includes("/@mariozechner/pi-coding-agent/")) {
+    return true;
+  }
+
+  return false;
+}
+
 function mapLocalPathToRemote(path: string, conn: SshConnection): string {
   if (path === conn.localCwd) return conn.remoteCwd;
   if (path.startsWith(`${conn.localCwd}/`)) {
     return `${conn.remoteCwd}${path.slice(conn.localCwd.length)}`;
   }
+
+  if (isPiLocalOnlyPath(path, conn)) {
+    return path;
+  }
+
   if (path === conn.localHome) return conn.remoteHome;
   if (path.startsWith(`${conn.localHome}/`)) {
     return `${conn.remoteHome}${path.slice(conn.localHome.length)}`;

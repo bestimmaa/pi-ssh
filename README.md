@@ -96,6 +96,7 @@ SSH user@my-vm:/home/user/chromium/src (port 22)
 
 - Absolute paths are strongly recommended for the remote path.
 - Paths under local `$HOME` are mapped to remote `$HOME` in SSH mode (for example `~/.config/...`).
+- pi internals stay local in SSH mode (for example `~/.pi/...` and pi package docs/skills paths).
 - If `--ssh` is not set, extension falls back to local tool behavior.
 - Current version focuses on core coding tools (`read/write/edit/bash`).
 
