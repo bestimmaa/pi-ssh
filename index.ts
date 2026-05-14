@@ -1,4 +1,5 @@
 import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
+import { constants as fsConstants, promises as fs } from "node:fs";
 import { homedir } from "node:os";
 import { resolve } from "node:path";
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
@@ -745,14 +746,24 @@ class SshTransport implements RemoteTransport {
 function createRemoteReadOps(conn: SshConnection, transport: RemoteTransport): ReadOperations {
   return {
     readFile: async (absolutePath) => {
+      if (isPiLocalOnlyPath(absolutePath, conn)) {
+        return fs.readFile(absolutePath);
+      }
       const remotePath = mapLocalPathToRemote(absolutePath, conn);
       return transport.readFile(remotePath);
     },
     access: async (absolutePath) => {
+      if (isPiLocalOnlyPath(absolutePath, conn)) {
+        await fs.access(absolutePath, fsConstants.R_OK);
+        return;
+      }
       const remotePath = mapLocalPathToRemote(absolutePath, conn);
       await transport.ensureReadable(remotePath);
     },
     detectImageMimeType: async (absolutePath) => {
+      if (isPiLocalOnlyPath(absolutePath, conn)) {
+        return null;
+      }
       const remotePath = mapLocalPathToRemote(absolutePath, conn);
       try {
         return await transport.detectImageMimeType(remotePath);
@@ -766,10 +777,18 @@ function createRemoteReadOps(conn: SshConnection, transport: RemoteTransport): R
 function createRemoteWriteOps(conn: SshConnection, transport: RemoteTransport): WriteOperations {
   return {
     mkdir: async (absoluteDir) => {
+      if (isPiLocalOnlyPath(absoluteDir, conn)) {
+        await fs.mkdir(absoluteDir, { recursive: true });
+        return;
+      }
       const remoteDir = mapLocalPathToRemote(absoluteDir, conn);
       await transport.mkdir(remoteDir);
     },
     writeFile: async (absolutePath, content) => {
+      if (isPiLocalOnlyPath(absolutePath, conn)) {
+        await fs.writeFile(absolutePath, content, "utf-8");
+        return;
+      }
       const remotePath = mapLocalPathToRemote(absolutePath, conn);
       await transport.writeFile(remotePath, Buffer.from(content, "utf-8"));
     },
@@ -784,6 +803,10 @@ function createRemoteEditOps(conn: SshConnection, transport: RemoteTransport): E
     readFile: readOps.readFile,
     writeFile: writeOps.writeFile,
     access: async (absolutePath) => {
+      if (isPiLocalOnlyPath(absolutePath, conn)) {
+        await fs.access(absolutePath, fsConstants.R_OK | fsConstants.W_OK);
+        return;
+      }
       const remotePath = mapLocalPathToRemote(absolutePath, conn);
       await transport.ensureReadableWritable(remotePath);
     },
@@ -853,6 +876,7 @@ export default function piSshExtension(pi: ExtensionAPI): void {
 
   const localCwd = process.cwd();
   const localHome = homedir();
+  const debug = process.env.PI_SSH_DEBUG === "1";
 
   const localRead = createReadTool(localCwd);
   const localWrite = createWriteTool(localCwd);
@@ -869,8 +893,16 @@ export default function piSshExtension(pi: ExtensionAPI): void {
     async execute(id, params, signal, onUpdate) {
       const conn = getConnection();
       const requestedPath = typeof (params as { path?: unknown })?.path === "string" ? (params as { path?: string }).path : undefined;
+      const localOnly = conn ? shouldUseLocalTool(requestedPath, localCwd, conn) : false;
 
-      if (!conn || !transport || shouldUseLocalTool(requestedPath, localCwd, conn)) {
+      if (debug) {
+        const resolved = conn && requestedPath ? resolveToolPath(requestedPath, localCwd, conn.localHome) : undefined;
+        console.error(
+          `[pi-ssh] read path=${requestedPath ?? "<none>"} resolved=${resolved ?? "<none>"} localOnly=${String(localOnly)} transport=${String(Boolean(transport))}`,
+        );
+      }
+
+      if (!conn || !transport || localOnly) {
         return localRead.execute(id, params, signal, onUpdate);
       }
 
